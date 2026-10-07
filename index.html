@@ -1,143 +1,1432 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#121722">
+  <meta name="theme-color" content="#0f172a">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="MINE-RUST">
-  <title>MINE-RUST — Hardcore Mobile 3D Survival</title>
+  <title>MINE-RUST — لعبة النجاة ثلاثية الأبعاد</title>
 
+  <!-- PWA Manifest & Icons -->
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./css/style.css">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="icon" type="image/png" href="./icon-192.png">
 
-  <!-- Localized fallback & offline Three.js WebGL -->
+  <!-- محرك Three.js المعتمد -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ملء الشاشة بنسبة 100% ومنع أي حواف بيضاء أو تمرير */
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      position: fixed;
+      inset: 0;
+      background-color: #020617;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f8fafc;
+    }
+
+    #game-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+    }
+
+    /* طبقات التحكم باللمس المفصولة تماماً */
+    #touch-zones {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      pointer-events: none;
+    }
+    #zone-move {
+      width: 48%;
+      height: 100%;
+      pointer-events: auto;
+    }
+    #zone-look {
+      width: 52%;
+      height: 100%;
+      pointer-events: auto;
+    }
+
+    /* عصا التحكم الافتراضية (Joystick) */
+    #joystick-base {
+      position: absolute;
+      bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+      left: calc(26px + env(safe-area-inset-left, 0px));
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.5);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 6;
+      pointer-events: none;
+    }
+    #joystick-knob {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #f97316, #c2410c);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+      border: 2px solid #fdba74;
+      transform: translate(0px, 0px);
+      will-change: transform;
+    }
+
+    /* أزرار العمل والإجراء (اليمين) */
+    #action-cluster {
+      position: absolute;
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      right: calc(20px + env(safe-area-inset-right, 0px));
+      z-index: 7;
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      pointer-events: auto;
+    }
+    .action-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .action-btn {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.85);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+    .action-btn:active, .action-btn.active {
+      transform: scale(0.92);
+      border-color: #f97316;
+      background: rgba(234, 88, 12, 0.4);
+    }
+    .action-btn.main-hit {
+      width: 76px;
+      height: 76px;
+      background: linear-gradient(135deg, #ea580c, #9a3412);
+      border-color: #fdba74;
+      font-size: 13px;
+    }
+
+    /* الشريط العلوي للبيانات */
+    #hud-top {
+      position: absolute;
+      top: calc(12px + env(safe-area-inset-top, 0px));
+      left: calc(14px + env(safe-area-inset-left, 0px));
+      right: calc(14px + env(safe-area-inset-right, 0px));
+      z-index: 6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+    .top-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      pointer-events: auto;
+    }
+    .pill {
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+    }
+
+    /* مؤشرات البقاء الحيوية (Vitals) */
+    #vitals-row {
+      position: absolute;
+      bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 6;
+      display: flex;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .vital-box {
+      width: 66px;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 4px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .vital-bar {
+      height: 5px;
+      border-radius: 3px;
+      background: #000;
+      margin-top: 3px;
+      overflow: hidden;
+    }
+    .vital-fill { height: 100%; width: 100%; transition: width 0.25s; }
+    .vital-fill.hp { background: #ef4444; }
+    .vital-fill.food { background: #f97316; }
+    .vital-fill.water { background: #0ea5e9; }
+    .vital-fill.sta { background: #10b981; }
+
+    /* شريط الأدوات السريع (Hotbar) */
+    #hotbar-container {
+      position: absolute;
+      bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 6;
+      display: flex;
+      gap: 6px;
+      pointer-events: auto;
+    }
+    .hotbar-slot {
+      width: 48px;
+      height: 48px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      position: relative;
+      cursor: pointer;
+    }
+    .hotbar-slot.selected {
+      border-color: #f97316;
+      background: rgba(234, 88, 12, 0.25);
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+    }
+    .hotbar-slot .count {
+      position: absolute;
+      bottom: 2px;
+      left: 4px;
+      font-size: 9px;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 5px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 50%;
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    /* النوافذ والقوائم المنبثقة */
+    .overlay-modal {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      background: rgba(10, 15, 26, 0.96);
+      backdrop-filter: blur(12px);
+      display: none;
+      flex-direction: column;
+      padding: 18px 24px;
+    }
+    .overlay-modal.active { display: flex; }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+    }
+    .modal-header h2 { font-size: 16px; color: #f97316; font-weight: 800; }
+    .close-btn {
+      background: #1e293b;
+      border: 1px solid #475569;
+      color: #fff;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .grid-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .item-card {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .card-btn {
+      background: #ea580c;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .card-btn:disabled { background: #475569; cursor: not-allowed; }
+
+    #toast-msg {
+      position: absolute;
+      top: 65px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1.5px solid #f97316;
+      color: #fff;
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+      z-index: 30;
+      opacity: 0;
+      transition: opacity 0.25s, transform 0.25s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #toast-msg.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(6px);
+    }
+
+    #death-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      background: rgba(69, 10, 10, 0.96);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+    #death-overlay.active { display: flex; }
+    #death-overlay h1 { font-size: 36px; color: #ef4444; font-weight: 900; }
+  </style>
 </head>
 <body>
 
-  <!-- WebGL Render Canvas -->
-  <div id="canvas-container">
-    <canvas id="game-canvas"></canvas>
-  </div>
+  <!-- مسرح اللعبة الثلاثي الأبعاد -->
+  <canvas id="game-canvas"></canvas>
 
-  <!-- Isolated Dual-Zone Mobile Touch Controller -->
-  <div id="touch-layer">
-    <div id="zone-joystick"></div>
+  <!-- علامة التصويب والرسائل التفاعلية -->
+  <div id="crosshair"></div>
+  <div id="toast-msg">تنبيه</div>
+
+  <!-- مناطق اللمس المزدوجة لشاشات الهاتف -->
+  <div id="touch-zones">
+    <div id="zone-move"></div>
     <div id="zone-look"></div>
   </div>
 
-  <!-- Dynamic Joystick Visuals -->
   <div id="joystick-base">
     <div id="joystick-knob"></div>
   </div>
 
-  <!-- Reticle & Interaction Prompts -->
-  <div id="crosshair"></div>
-  <div id="interaction-prompt">
-    <span id="prompt-icon">⛏</span>
-    <span id="prompt-label">HARVEST</span>
-  </div>
-
-  <!-- Top Navigation & Status -->
-  <div id="top-hud">
-    <div style="display: flex; gap: 8px;">
-      <button class="hud-pill" id="btn-inv-toggle">🎒 INVENTORY</button>
-      <button class="hud-pill" id="btn-craft-toggle">🔨 CRAFT</button>
-      <button class="hud-pill" id="btn-build-toggle">🧱 BUILD</button>
-      <button class="hud-pill" id="btn-map-toggle">🗺 MAP</button>
+  <!-- الشريط العلوي -->
+  <div id="hud-top">
+    <div class="top-group">
+      <div class="pill" id="btn-open-craft">🔨 الصناعة</div>
+      <div class="pill" id="btn-open-build">🧱 البناء</div>
+      <div class="pill" id="btn-open-inv">🎒 الحقيبة</div>
     </div>
-    <div id="compass-bar">COMPASS: <span id="txt-compass">N 000°</span></div>
-    <div style="display: flex; gap: 8px;">
-      <div class="hud-pill" id="btn-pwa-install" style="display: none; background: #0284c7;">📲 INSTALL</div>
-      <div class="hud-pill">⏰ <span id="txt-time">12:00</span></div>
+    <div class="top-group">
+      <div class="pill" id="btn-pwa-install" style="display: none; background: #0284c7;">📲 تثبيت التطبيق</div>
+      <div class="pill">⏰ <span id="txt-time">12:00</span></div>
     </div>
   </div>
 
-  <!-- Bottom Vitals & Touch Hotbar -->
-  <div id="bottom-hud">
-    <div id="vitals-row">
-      <div class="vital-gauge">
-        ❤️ HP <span id="val-hp">100</span>
-        <div class="vital-meter"><div class="vital-fill hp" id="bar-hp"></div></div>
-      </div>
-      <div class="vital-gauge">
-        🍖 FOOD <span id="val-food">100</span>
-        <div class="vital-meter"><div class="vital-fill food" id="bar-food"></div></div>
-      </div>
-      <div class="vital-gauge">
-        💧 WATER <span id="val-water">100</span>
-        <div class="vital-meter"><div class="vital-fill water" id="bar-water"></div></div>
-      </div>
-      <div class="vital-gauge">
-        ⚡ STA <span id="val-sta">100</span>
-        <div class="vital-meter"><div class="vital-fill sta" id="bar-sta"></div></div>
-      </div>
+  <!-- مؤشرات النجاة الحيوية -->
+  <div id="vitals-row">
+    <div class="vital-box">
+      ❤️ <span id="val-hp">100</span>
+      <div class="vital-bar"><div class="vital-fill hp" id="bar-hp"></div></div>
     </div>
-    <div id="hotbar-container"></div>
+    <div class="vital-box">
+      🍖 <span id="val-food">100</span>
+      <div class="vital-bar"><div class="vital-fill food" id="bar-food"></div></div>
+    </div>
+    <div class="vital-box">
+      💧 <span id="val-water">100</span>
+      <div class="vital-bar"><div class="vital-fill water" id="bar-water"></div></div>
+    </div>
+    <div class="vital-box">
+      ⚡ <span id="val-sta">100</span>
+      <div class="vital-bar"><div class="vital-fill sta" id="bar-sta"></div></div>
+    </div>
   </div>
 
-  <!-- Right-side Touch Action Cluster -->
+  <!-- الشريط السفلي السريع للأدوات -->
+  <div id="hotbar-container"></div>
+
+  <!-- أزرار الإجراء السريع -->
   <div id="action-cluster">
-    <div class="action-column">
-      <button class="hud-btn" id="btn-jump">⤴<small>JUMP</small></button>
-      <button class="hud-btn" id="btn-sprint">🏃<small>SPRINT</small></button>
-      <button class="hud-btn" id="btn-crouch">🧎<small>CROUCH</small></button>
+    <div class="action-col">
+      <button class="action-btn" id="btn-jump">⤴<br>قفز</button>
+      <button class="action-btn" id="btn-sprint">🏃<br>ركض</button>
     </div>
-    <button class="hud-btn primary-attack" id="btn-attack">💥<small>ACTION</small></button>
+    <button class="action-btn main-hit" id="btn-hit">💥<br>ضرب</button>
   </div>
 
-  <!-- Modal 1: Inventory & Equipment -->
-  <div class="overlay-modal" id="modal-inventory">
+  <!-- نافذة الصناعة -->
+  <div class="overlay-modal" id="modal-craft">
     <div class="modal-header">
-      <h2>BACKPACK & EQUIPMENT</h2>
-      <button class="close-btn" data-close="modal-inventory">&times;</button>
+      <h2>قائمة الصناعة والعتاد</h2>
+      <button class="close-btn" data-close="modal-craft">✕</button>
     </div>
-    <div class="grid-view" id="inv-grid-slots"></div>
+    <div class="grid-cards" id="craft-list"></div>
   </div>
 
-  <!-- Modal 2: Crafting Station -->
-  <div class="overlay-modal" id="modal-crafting">
+  <!-- نافذة البناء الموديولي -->
+  <div class="overlay-modal" id="modal-build">
     <div class="modal-header">
-      <h2>SURVIVAL FABRICATION (TIER <span id="txt-wb-tier">1</span>)</h2>
-      <button class="close-btn" data-close="modal-crafting">&times;</button>
+      <h2>مخططات البناء والمنشآت</h2>
+      <button class="close-btn" data-close="modal-build">✕</button>
     </div>
-    <div class="grid-view" id="craft-grid-list"></div>
+    <div class="grid-cards" id="build-list"></div>
   </div>
 
-  <!-- Modal 3: Modular Building Selector -->
-  <div class="overlay-modal" id="modal-building">
+  <!-- نافذة الحقيبة الكاملة -->
+  <div class="overlay-modal" id="modal-inv">
     <div class="modal-header">
-      <h2>MODULAR STRUCTURES PLAN</h2>
-      <button class="close-btn" data-close="modal-building">&times;</button>
+      <h2>الحقيبة والمخزون</h2>
+      <button class="close-btn" data-close="modal-inv">✕</button>
     </div>
-    <div class="grid-view" id="build-grid-list"></div>
+    <div class="grid-cards" id="inv-list"></div>
   </div>
 
-  <!-- Modal 4: Cartographic Map -->
-  <div class="overlay-modal" id="modal-map">
-    <div class="modal-header">
-      <h2>TERRAIN CARTOGRAPHY (SEED: <span id="txt-map-seed">0</span>)</h2>
-      <button class="close-btn" data-close="modal-map">&times;</button>
-    </div>
-    <div style="flex:1; display:flex; align-items:center; justify-content:center; background:#020617; border-radius:12px; position:relative; overflow:hidden;">
-      <canvas id="map-canvas" width="400" height="400" style="max-width:100%; max-height:100%; border:1px solid #1e293b;"></canvas>
-    </div>
+  <!-- شاشة الموت -->
+  <div id="death-overlay">
+    <h1>لقد مت!</h1>
+    <p style="font-size: 14px; color: #cbd5e1;">قضت عليك قسوة الطبيعة أو الوحوش المتوحشة.</p>
+    <button class="card-btn" id="btn-respawn" style="padding: 10px 24px; font-size: 14px;">إعادة الإحياء على الساحل</button>
   </div>
 
-  <!-- In-game Notification Banner -->
-  <div id="toast-notice">Notice</div>
+  <!-- محرك اللعبة الأساسي -->
+  <script>
+    /* =======================================================
+       MINE-RUST ENGINE — FULL MOBILE SIMULATOR
+       ======================================================= */
 
-  <!-- Death & Respawn Modal -->
-  <div id="death-screen">
-    <h1>YOU DIED</h1>
-    <p style="color: #cbd5e1; font-size: 13px;">Exposure and harsh elements claimed your survival journey.</p>
-    <button id="btn-respawn">RESPAWN AT COAST</button>
-  </div>
+    // 1. مولد المؤثرات الصوتية التركيبي (بدون ملفات خارجية)
+    class SoundEngine {
+      constructor() { this.ctx = null; }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      }
+      playWoodHit() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(35, this.ctx.currentTime + 0.1);
+        g.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+      }
+      playStoneHit() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+        osc.type = 'square'; osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.08);
+        g.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.08);
+      }
+      playStep() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(90, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.06);
+        g.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.06);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.06);
+      }
+      playCraft() {
+        if (!this.ctx) return;
+        [440, 554, 659, 880].forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+          osc.type = 'triangle'; osc.frequency.value = freq;
+          g.gain.setValueAtTime(0.12, this.ctx.currentTime + idx * 0.07);
+          g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + idx * 0.07 + 0.25);
+          osc.connect(g); g.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + idx * 0.07);
+          osc.stop(this.ctx.currentTime + idx * 0.07 + 0.25);
+        });
+      }
+      playBuild() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(260, this.ctx.currentTime + 0.12);
+        g.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.12);
+      }
+    }
 
-  <!-- Core Game Script Module -->
-  <script src="./js/game.js"></script>
+    // 2. قاعدة بيانات العناصر والوصفات بالعربية
+    const ITEMS_DATA = {
+      rock: { id: 'rock', name: 'حجر النجاة', icon: '🪨', type: 'tool', dmg: 10, woodM: 1.0, stoneM: 1.0 },
+      wood: { id: 'wood', name: 'خشب', icon: '🪵', type: 'resource', stack: 500 },
+      stone: { id: 'stone', name: 'حجارة', icon: '⛰', type: 'resource', stack: 500 },
+      metal: { id: 'metal', name: 'خام حديد', icon: '🧱', type: 'resource', stack: 300 },
+      axe: { id: 'axe', name: 'فأس حجري', icon: '🪓', type: 'tool', dmg: 22, woodM: 3.0, stoneM: 1.2 },
+      pickaxe: { id: 'pickaxe', name: 'معول حجري', icon: '⛏', type: 'tool', dmg: 18, woodM: 1.2, stoneM: 3.5 },
+      spear: { id: 'spear', name: 'رمح صيد', icon: '🗡', type: 'weapon', dmg: 40, woodM: 0.5, stoneM: 0.5 },
+      meat: { id: 'meat', name: 'لحم مشوي', icon: '🍖', type: 'food', food: 35, hp: 15 },
+      bandage: { id: 'bandage', name: 'ضمادة نظيفة', icon: '🩹', type: 'medical', hp: 30 },
+      campfire: { id: 'campfire', name: 'نار مخيم', icon: '🔥', type: 'placeable' }
+    };
+
+    const CRAFT_RECIPES = [
+      { id: 'axe', name: 'فأس حجري', cost: { wood: 25, stone: 15 }, yield: { id: 'axe', count: 1 } },
+      { id: 'pickaxe', name: 'معول حجري', cost: { wood: 25, stone: 20 }, yield: { id: 'pickaxe', count: 1 } },
+      { id: 'spear', name: 'رمح صيد', cost: { wood: 45 }, yield: { id: 'spear', count: 1 } },
+      { id: 'bandage', name: 'ضمادة طبية', cost: { wood: 10 }, yield: { id: 'bandage', count: 2 } },
+      { id: 'campfire', name: 'نار مخيم', cost: { wood: 30, stone: 10 }, yield: { id: 'campfire', count: 1 } }
+    ];
+
+    const BUILD_RECIPES = [
+      { id: 'wall', name: 'جدار خشبي', cost: { wood: 30 }, size: [3.2, 2.8, 0.3] },
+      { id: 'floor', name: 'أرضية خشبية', cost: { wood: 35 }, size: [3.2, 0.3, 3.2] },
+      { id: 'door', name: 'باب تفاعلي', cost: { wood: 25 }, size: [1.2, 2.6, 0.2], isDoor: true }
+    ];
+
+    // 3. المحرك الشامل
+    class MineRustGame {
+      constructor() {
+        this.canvas = document.getElementById('game-canvas');
+        this.sound = new SoundEngine();
+
+        // مؤشرات الحياة
+        this.hp = 100;
+        this.food = 100;
+        this.water = 100;
+        this.stamina = 100;
+
+        // الحقيبة والشريط السريع
+        this.hotbar = new Array(6).fill(null);
+        this.inventory = new Array(18).fill(null);
+        this.selectedHotbar = 0;
+
+        // مصفوفات الكائنات
+        this.nodes = [];
+        this.entities = [];
+        this.structures = [];
+
+        // فيزياء وحركة اللاعب
+        this.pos = new THREE.Vector3(0, 3, 0);
+        this.velY = 0;
+        this.yaw = 0;
+        this.pitch = 0;
+        this.targetYaw = 0;
+        this.targetPitch = 0;
+        this.isGrounded = true;
+        this.isSprinting = false;
+        this.moveInput = { x: 0, z: 0 };
+
+        // وضع البناء
+        this.buildMode = false;
+        this.selectedBuildIndex = 0;
+
+        // أنيميشن الأداة
+        this.isSwinging = false;
+        this.swingProgress = 0;
+
+        // دورة الليل والنهار
+        this.dayTime = 0.25;
+
+        this.initThree();
+        this.buildVoxelWorld();
+        this.initPlayerHands();
+        this.initTouchControls();
+        this.initUI();
+        this.initPWA();
+
+        // ملء عتاد البداية الافتراضي
+        this.hotbar[0] = { id: 'rock', count: 1 };
+        this.hotbar[1] = { id: 'bandage', count: 2 };
+        this.renderHotbar();
+        this.updateHands();
+
+        this.startLoop();
+      }
+
+      initThree() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x7dd3fc);
+        this.scene.fog = new THREE.FogExp2(0x7dd3fc, 0.016);
+
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 260);
+        this.camera.rotation.order = 'YXZ';
+
+        this.renderer = new THREE.WebGLRenderer({
+          canvas: this.canvas,
+          antialias: true,
+          powerPreference: 'high-performance'
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        this.renderer.shadowMap.enabled = true;
+
+        // إضاءة شمسية ناعمة
+        this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.7);
+        this.scene.add(this.hemiLight);
+
+        this.dirLight = new THREE.DirectionalLight(0xffedd4, 1.2);
+        this.dirLight.position.set(40, 60, 20);
+        this.dirLight.castShadow = true;
+        this.scene.add(this.dirLight);
+
+        // مجسم المعاينة الشفاف للبناء (Hologram Ghost)
+        const ghostGeo = new THREE.BoxGeometry(3.2, 2.8, 0.3);
+        const ghostMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, wireframe: true, transparent: true, opacity: 0.6 });
+        this.ghostMesh = new THREE.Mesh(ghostGeo, ghostMat);
+        this.ghostMesh.visible = false;
+        this.scene.add(this.ghostMesh);
+
+        window.addEventListener('resize', () => {
+          this.camera.aspect = window.innerWidth / window.innerHeight;
+          this.camera.updateProjectionMatrix();
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+      }
+
+      buildVoxelWorld() {
+        // 1. أرضية تضاريس متموجة
+        const terrainGeo = new THREE.PlaneGeometry(160, 160, 32, 32);
+        terrainGeo.rotateX(-Math.PI / 2);
+        const posAttr = terrainGeo.attributes.position;
+        for (let i = 0; i < posAttr.count; i++) {
+          const vx = posAttr.getX(i);
+          const vz = posAttr.getZ(i);
+          const y = Math.sin(vx * 0.06) * Math.cos(vz * 0.06) * 2.2;
+          posAttr.setY(i, Math.max(0, y));
+        }
+        terrainGeo.computeVertexNormals();
+
+        const terrainMat = new THREE.MeshLambertMaterial({ color: 0x3d5a24 });
+        this.terrain = new THREE.Mesh(terrainGeo, terrainMat);
+        this.terrain.receiveShadow = true;
+        this.scene.add(this.terrain);
+
+        // 2. إنشاء الأشجار (Voxel Trees)
+        const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a381e });
+        const leafMat = new THREE.MeshLambertMaterial({ color: 0x2e5618 });
+
+        for (let i = 0; i < 40; i++) {
+          const rx = (Math.random() - 0.5) * 120;
+          const rz = (Math.random() - 0.5) * 120;
+          if (Math.hypot(rx, rz) < 6) continue;
+
+          const tree = new THREE.Group();
+          tree.position.set(rx, this.getHeight(rx, rz), rz);
+
+          const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.7, 3.6, 0.7), trunkMat);
+          trunk.position.y = 1.8;
+          trunk.castShadow = true;
+          tree.add(trunk);
+
+          const leaves = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.4, 2.4), leafMat);
+          leaves.position.y = 4.2;
+          leaves.castShadow = true;
+          tree.add(leaves);
+
+          this.scene.add(tree);
+          this.nodes.push({ type: 'tree', obj: tree, hp: 60, pos: tree.position });
+        }
+
+        // 3. إنشاء الصخور والخامات (Rocks & Minerals)
+        const rockMat = new THREE.MeshLambertMaterial({ color: 0x64748b });
+        const metalMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
+
+        for (let i = 0; i < 25; i++) {
+          const rx = (Math.random() - 0.5) * 120;
+          const rz = (Math.random() - 0.5) * 120;
+          if (Math.hypot(rx, rz) < 6) continue;
+
+          const isMetal = Math.random() < 0.4;
+          const boulder = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 1.6), isMetal ? metalMat : rockMat);
+          boulder.position.set(rx, this.getHeight(rx, rz) + 0.7, rz);
+          boulder.rotation.y = Math.random() * Math.PI;
+          boulder.castShadow = true;
+
+          this.scene.add(boulder);
+          this.nodes.push({ type: isMetal ? 'metal' : 'stone', obj: boulder, hp: 80, pos: boulder.position });
+        }
+
+        // 4. الحيوانات والوحوش
+        this.spawnEntities();
+      }
+
+      getHeight(x, z) {
+        return Math.max(0, Math.sin(x * 0.06) * Math.cos(z * 0.06) * 2.2);
+      }
+
+      spawnEntities() {
+        // غزال / خنزير (مسالم)
+        const deerMat = new THREE.MeshLambertMaterial({ color: 0x9a6b42 });
+        for (let i = 0; i < 4; i++) {
+          const deer = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.0, 1.6), deerMat);
+          deer.position.set((Math.random() - 0.5) * 80, 2, (Math.random() - 0.5) * 80);
+          deer.castShadow = true;
+          this.scene.add(deer);
+          this.entities.push({
+            type: 'deer', mesh: deer, hp: 40, speed: 2.2,
+            dir: new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize(), timer: 0
+          });
+        }
+
+        // ذئب متوحش (مهاجم)
+        const wolfMat = new THREE.MeshLambertMaterial({ color: 0x334155 });
+        for (let i = 0; i < 3; i++) {
+          const wolf = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 1.5), wolfMat);
+          wolf.position.set(15 + (Math.random() - 0.5) * 50, 2, 15 + (Math.random() - 0.5) * 50);
+          wolf.castShadow = true;
+          this.scene.add(wolf);
+          this.entities.push({
+            type: 'wolf', mesh: wolf, hp: 55, speed: 3.6,
+            dir: new THREE.Vector3(1, 0, 0), timer: 0
+          });
+        }
+      }
+
+      initPlayerHands() {
+        this.handsPivot = new THREE.Group();
+        this.camera.add(this.handsPivot);
+        this.handsPivot.position.set(0.35, -0.32, -0.55);
+
+        this.handsContainer = new THREE.Group();
+        this.handsPivot.add(this.handsContainer);
+        this.scene.add(this.camera);
+      }
+
+      updateHands() {
+        while (this.handsContainer.children.length > 0) {
+          this.handsContainer.remove(this.handsContainer.children[0]);
+        }
+
+        const curItem = this.hotbar[this.selectedHotbar];
+        const itemId = curItem ? curItem.id : 'rock';
+
+        if (itemId === 'rock') {
+          const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.12), new THREE.MeshLambertMaterial({ color: 0x78716c }));
+          this.handsContainer.add(rock);
+        } else if (itemId === 'axe') {
+          const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.45, 0.04), new THREE.MeshLambertMaterial({ color: 0x78350f }));
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.16), new THREE.MeshLambertMaterial({ color: 0x94a3b8 }));
+          head.position.set(0, 0.18, -0.06);
+          this.handsContainer.add(handle, head);
+        } else if (itemId === 'pickaxe') {
+          const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.48, 0.04), new THREE.MeshLambertMaterial({ color: 0x78350f }));
+          const pick = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.3), new THREE.MeshLambertMaterial({ color: 0x94a3b8 }));
+          pick.position.set(0, 0.2, 0);
+          this.handsContainer.add(handle, pick);
+        } else if (itemId === 'spear') {
+          const spearShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9), new THREE.MeshLambertMaterial({ color: 0x78350f }));
+          spearShaft.rotation.x = Math.PI / 2.5;
+          this.handsContainer.add(spearShaft);
+        }
+      }
+
+      initTouchControls() {
+        const zoneMove = document.getElementById('zone-move');
+        const zoneLook = document.getElementById('zone-look');
+        const knob = document.getElementById('joystick-knob');
+        const base = document.getElementById('joystick-base');
+
+        let moveId = null;
+        let lookId = null;
+        let lastLook = { x: 0, y: 0 };
+
+        zoneMove.addEventListener('touchstart', (e) => {
+          this.sound.init();
+          if (moveId !== null) return;
+          const t = e.changedTouches[0];
+          moveId = t.identifier;
+          this.handleJoy(t.clientX, t.clientY, knob, base);
+        }, { passive: false });
+
+        zoneMove.addEventListener('touchmove', (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (t.identifier === moveId) {
+              this.handleJoy(t.clientX, t.clientY, knob, base);
+              break;
+            }
+          }
+        }, { passive: false });
+
+        const endMove = (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === moveId) {
+              moveId = null;
+              this.moveInput.x = 0;
+              this.moveInput.z = 0;
+              knob.style.transform = 'translate(0px, 0px)';
+              break;
+            }
+          }
+        };
+        zoneMove.addEventListener('touchend', endMove);
+        zoneMove.addEventListener('touchcancel', endMove);
+
+        // تدوير الكاميرا بنعومة تامة
+        zoneLook.addEventListener('touchstart', (e) => {
+          this.sound.init();
+          if (lookId !== null) return;
+          const t = e.changedTouches[0];
+          lookId = t.identifier;
+          lastLook.x = t.clientX;
+          lastLook.y = t.clientY;
+        }, { passive: false });
+
+        zoneLook.addEventListener('touchmove', (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (t.identifier === lookId) {
+              const dx = t.clientX - lastLook.x;
+              const dy = t.clientY - lastLook.y;
+              lastLook.x = t.clientX;
+              lastLook.y = t.clientY;
+
+              this.targetYaw -= dx * 0.0035;
+              this.targetPitch = Math.max(-1.3, Math.min(1.3, this.targetPitch - dy * 0.0035));
+              break;
+            }
+          }
+        }, { passive: false });
+
+        const endLook = (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === lookId) {
+              lookId = null;
+              break;
+            }
+          }
+        };
+        zoneLook.addEventListener('touchend', endLook);
+        zoneLook.addEventListener('touchcancel', endLook);
+
+        // أزرار العمل
+        document.getElementById('btn-jump').addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          if (this.isGrounded && this.stamina >= 10) {
+            this.velY = 6.8;
+            this.isGrounded = false;
+            this.stamina -= 10;
+            this.sound.playStep();
+          }
+        });
+
+        const sprintBtn = document.getElementById('btn-sprint');
+        sprintBtn.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          this.isSprinting = !this.isSprinting;
+          sprintBtn.classList.toggle('active', this.isSprinting);
+        });
+
+        document.getElementById('btn-hit').addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          this.performHit();
+        });
+      }
+
+      handleJoy(cx, cy, knob, base) {
+        const rect = base.getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        const midY = rect.top + rect.height / 2;
+
+        const dx = cx - midX;
+        const dy = cy - midY;
+        const dist = Math.hypot(dx, dy);
+        const maxR = 45;
+        const clampDist = Math.min(dist, maxR);
+        const angle = Math.atan2(dy, dx);
+
+        const nx = Math.cos(angle) * clampDist;
+        const ny = Math.sin(angle) * clampDist;
+        knob.style.transform = `translate(${nx}px, ${ny}px)`;
+
+        if (dist > 4) {
+          this.moveInput.x = nx / maxR;
+          this.moveInput.z = ny / maxR;
+        } else {
+          this.moveInput.x = 0;
+          this.moveInput.z = 0;
+        }
+      }
+
+      initUI() {
+        // إدارة النوافذ
+        const bindModal = (btnId, modalId, onOpen) => {
+          document.getElementById(btnId).addEventListener('click', () => {
+            document.querySelectorAll('.overlay-modal').forEach(m => m.classList.remove('active'));
+            document.getElementById(modalId).classList.add('active');
+            if (onOpen) onOpen();
+          });
+        };
+
+        bindModal('btn-open-craft', 'modal-craft', () => this.renderCraftingUI());
+        bindModal('btn-open-build', 'modal-build', () => this.renderBuildingUI());
+        bindModal('btn-open-inv', 'modal-inv', () => this.renderInventoryUI());
+
+        document.querySelectorAll('.close-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            document.getElementById(btn.dataset.close).classList.remove('active');
+          });
+        });
+
+        document.getElementById('btn-respawn').addEventListener('click', () => {
+          this.respawn();
+        });
+      }
+
+      renderHotbar() {
+        const container = document.getElementById('hotbar-container');
+        container.innerHTML = '';
+        for (let i = 0; i < 6; i++) {
+          const slot = document.createElement('div');
+          slot.className = `hotbar-slot ${i === this.selectedHotbar ? 'selected' : ''}`;
+          const item = this.hotbar[i];
+          if (item) {
+            const def = ITEMS_DATA[item.id];
+            slot.innerHTML = `<span>${def.icon}</span>${item.count > 1 ? `<span class="count">${item.count}</span>` : ''}`;
+          }
+          slot.addEventListener('click', () => {
+            this.selectedHotbar = i;
+            this.renderHotbar();
+            this.updateHands();
+          });
+          container.appendChild(slot);
+        }
+      }
+
+      renderCraftingUI() {
+        const list = document.getElementById('craft-list');
+        list.innerHTML = '';
+        CRAFT_RECIPES.forEach(recipe => {
+          const def = ITEMS_DATA[recipe.yield.id];
+          const canCraft = this.canAfford(recipe.cost);
+          const costStr = Object.entries(recipe.cost).map(([id, n]) => `${n} ${ITEMS_DATA[id].name}`).join(' + ');
+
+          const card = document.createElement('div');
+          card.className = 'item-card';
+          card.innerHTML = `
+            <div style="font-size: 26px; text-align: center;">${def.icon}</div>
+            <div style="font-weight: bold; font-size: 12px; text-align: center;">${recipe.name}</div>
+            <div style="font-size: 10px; color: #94a3b8; text-align: center;">التكلفة: ${costStr}</div>
+            <button class="card-btn" ${canCraft ? '' : 'disabled'}>صناعة</button>
+          `;
+          card.querySelector('button').onclick = () => {
+            this.craft(recipe);
+          };
+          list.appendChild(card);
+        });
+      }
+
+      renderBuildingUI() {
+        const list = document.getElementById('build-list');
+        list.innerHTML = '';
+        BUILD_RECIPES.forEach((recipe, idx) => {
+          const card = document.createElement('div');
+          card.className = 'item-card';
+          card.innerHTML = `
+            <div style="font-size: 24px; text-align: center;">🧱</div>
+            <div style="font-weight: bold; font-size: 12px; text-align: center;">${recipe.name}</div>
+            <div style="font-size: 10px; color: #94a3b8; text-align: center;">التكلفة: ${recipe.cost.wood} خشب</div>
+            <button class="card-btn">تجهيز المخطط</button>
+          `;
+          card.querySelector('button').onclick = () => {
+            this.selectedBuildIndex = idx;
+            this.buildMode = true;
+            this.ghostMesh.scale.set(recipe.size[0], recipe.size[1], recipe.size[2]);
+            this.ghostMesh.visible = true;
+            document.getElementById('modal-build').classList.remove('active');
+            this.showToast(`تم تجهيز مخطط: ${recipe.name}`);
+          };
+          list.appendChild(card);
+        });
+      }
+
+      renderInventoryUI() {
+        const list = document.getElementById('inv-list');
+        list.innerHTML = '';
+        this.inventory.forEach((item, idx) => {
+          const card = document.createElement('div');
+          card.className = 'item-card';
+          if (item) {
+            const def = ITEMS_DATA[item.id];
+            card.innerHTML = `
+              <div style="font-size: 24px; text-align: center;">${def.icon}</div>
+              <div style="font-weight: bold; font-size: 11px; text-align: center;">${def.name} (${item.count})</div>
+              <button class="card-btn">نقل للشريط</button>
+            `;
+            card.querySelector('button').onclick = () => {
+              this.hotbar[this.selectedHotbar] = { ...item };
+              this.inventory[idx] = null;
+              this.renderHotbar();
+              this.renderInventoryUI();
+              this.updateHands();
+              this.showToast('تم التجهيز في اليد');
+            };
+          } else {
+            card.innerHTML = `<div style="text-align: center; color: #475569; margin: auto;">فارغ</div>`;
+          }
+          list.appendChild(card);
+        });
+      }
+
+      canAfford(cost) {
+        for (const [id, count] of Object.entries(cost)) {
+          let have = 0;
+          this.hotbar.forEach(s => { if (s && s.id === id) have += s.count; });
+          this.inventory.forEach(s => { if (s && s.id === id) have += s.count; });
+          if (have < count) return false;
+        }
+        return true;
+      }
+
+      deductCost(cost) {
+        for (const [id, count] of Object.entries(cost)) {
+          let needed = count;
+          for (let i = 0; i < this.hotbar.length && needed > 0; i++) {
+            const s = this.hotbar[i];
+            if (s && s.id === id) {
+              const take = Math.min(s.count, needed);
+              s.count -= take; needed -= take;
+              if (s.count <= 0) this.hotbar[i] = null;
+            }
+          }
+          for (let i = 0; i < this.inventory.length && needed > 0; i++) {
+            const s = this.inventory[i];
+            if (s && s.id === id) {
+              const take = Math.min(s.count, needed);
+              s.count -= take; needed -= take;
+              if (s.count <= 0) this.inventory[i] = null;
+            }
+          }
+        }
+      }
+
+      craft(recipe) {
+        if (!this.canAfford(recipe.cost)) return;
+        this.deductCost(recipe.cost);
+        this.addItem(recipe.yield.id, recipe.yield.count);
+        this.sound.playCraft();
+        this.showToast(`تمت صناعة ${recipe.name}!`);
+        this.renderCraftingUI();
+        this.renderHotbar();
+      }
+
+      addItem(id, count) {
+        for (let i = 0; i < 6; i++) {
+          if (this.hotbar[i] && this.hotbar[i].id === id) {
+            this.hotbar[i].count += count;
+            this.renderHotbar();
+            return;
+          }
+        }
+        for (let i = 0; i < 6; i++) {
+          if (!this.hotbar[i]) {
+            this.hotbar[i] = { id, count };
+            this.renderHotbar();
+            this.updateHands();
+            return;
+          }
+        }
+        for (let i = 0; i < this.inventory.length; i++) {
+          if (!this.inventory[i]) {
+            this.inventory[i] = { id, count };
+            return;
+          }
+        }
+        this.showToast('الحقيبة ممتلئة تماماً!');
+      }
+
+      performHit() {
+        this.sound.init();
+        const equipped = this.hotbar[this.selectedHotbar];
+        const toolId = equipped ? equipped.id : 'rock';
+        const tool = ITEMS_DATA[toolId];
+
+        this.isSwinging = true;
+        this.swingProgress = 0;
+
+        // 1. تنفيذ البناء إذا كان الوضع مفعلاً
+        if (this.buildMode) {
+          this.placeStructure();
+          return;
+        }
+
+        // 2. استخدام الأطعمة أو العلاج
+        if (tool.type === 'food') {
+          this.food = Math.min(100, this.food + tool.food);
+          this.hp = Math.min(100, this.hp + (tool.hp || 0));
+          this.sound.playStep();
+          this.showToast(`تناولت ${tool.name}`);
+          equipped.count--;
+          if (equipped.count <= 0) this.hotbar[this.selectedHotbar] = null;
+          this.renderHotbar();
+          return;
+        }
+
+        if (tool.type === 'medical') {
+          this.hp = Math.min(100, this.hp + tool.hp);
+          this.sound.playCraft();
+          this.showToast(`استخدمت ${tool.name}`);
+          equipped.count--;
+          if (equipped.count <= 0) this.hotbar[this.selectedHotbar] = null;
+          this.renderHotbar();
+          return;
+        }
+
+        if (tool.type === 'placeable') {
+          this.spawnCampfire();
+          equipped.count--;
+          if (equipped.count <= 0) this.hotbar[this.selectedHotbar] = null;
+          this.renderHotbar();
+          return;
+        }
+
+        // 3. تكسير الأشجار أو الصخور عبر Raycasting
+        let targetNode = null;
+        for (const n of this.nodes) {
+          if (n.hp <= 0) continue;
+          if (this.pos.distanceTo(n.pos) < 4.0) {
+            targetNode = n;
+            break;
+          }
+        }
+
+        if (targetNode) {
+          if (targetNode.type === 'tree') {
+            const gained = Math.round(8 * (tool.woodM || 1.0));
+            targetNode.hp -= (tool.dmg || 10);
+            this.addItem('wood', gained);
+            this.sound.playWoodHit();
+            this.showToast(`+${gained} خشب 🪵`);
+          } else {
+            const gained = Math.round(6 * (tool.stoneM || 1.0));
+            targetNode.hp -= (tool.dmg || 10);
+            if (targetNode.type === 'metal') this.addItem('metal', gained);
+            else this.addItem('stone', gained);
+            this.sound.playStoneHit();
+            this.showToast(`+${gained} ${targetNode.type === 'metal' ? 'حديد' : 'حجر'} ⛰`);
+          }
+
+          if (targetNode.hp <= 0) {
+            this.scene.remove(targetNode.obj);
+            this.showToast('تم استخراج المورد بالكامل!');
+          }
+          return;
+        }
+
+        // 4. قتال الحيوانات والوحوش
+        for (const ent of this.entities) {
+          if (ent.hp <= 0) continue;
+          if (this.pos.distanceTo(ent.mesh.position) < 3.8) {
+            ent.hp -= (tool.dmg || 15);
+            this.sound.playStoneHit();
+            this.showToast(`ضربت ${ent.type === 'wolf' ? 'الذئب' : 'الغزال'}! صحته: ${ent.hp}`);
+            if (ent.hp <= 0) {
+              this.scene.remove(ent.mesh);
+              this.addItem('meat', 3);
+              this.showToast('حصلت على 3 لحم مشوي! 🍖');
+            }
+            return;
+          }
+        }
+
+        // 5. فتح وغلق الأبواب الموضوعة
+        for (const str of this.structures) {
+          if (str.isDoor && this.pos.distanceTo(str.mesh.position) < 3.5) {
+            str.isOpen = !str.isOpen;
+            str.mesh.rotation.y += str.isOpen ? Math.PI / 2 : -Math.PI / 2;
+            this.sound.playBuild();
+            this.showToast(str.isOpen ? 'تم فتح الباب' : 'تم إغلاق الباب');
+            return;
+          }
+        }
+      }
+
+      placeStructure() {
+        const recipe = BUILD_RECIPES[this.selectedBuildIndex];
+        if (!this.canAfford(recipe.cost)) {
+          this.showToast('لا تملك الخشب الكافي للبناء!');
+          return;
+        }
+
+        this.deductCost(recipe.cost);
+        const geo = new THREE.BoxGeometry(recipe.size[0], recipe.size[1], recipe.size[2]);
+        const mat = new THREE.MeshLambertMaterial({ color: recipe.isDoor ? 0x9a3412 : 0x78350f });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        mesh.position.copy(this.ghostMesh.position);
+        mesh.rotation.y = this.ghostMesh.rotation.y;
+        mesh.castShadow = true;
+        this.scene.add(mesh);
+
+        this.structures.push({
+          mesh: mesh,
+          isDoor: recipe.isDoor || false,
+          isOpen: false
+        });
+
+        this.sound.playBuild();
+        this.showToast(`تم بناء ${recipe.name}!`);
+        this.buildMode = false;
+        this.ghostMesh.visible = false;
+      }
+
+      spawnCampfire() {
+        const fire = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.8), new THREE.MeshLambertMaterial({ color: 0xea580c }));
+        const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).multiplyScalar(2.5);
+        fire.position.set(this.pos.x + forward.x, this.getHeight(this.pos.x + forward.x, this.pos.z + forward.z) + 0.2, this.pos.z + forward.z);
+
+        const light = new THREE.PointLight(0xf97316, 2.5, 14);
+        light.position.y = 0.8;
+        fire.add(light);
+
+        this.scene.add(fire);
+        this.sound.playBuild();
+        this.showToast('تم وضع نار المخيم للتدفئة! 🔥');
+      }
+
+      respawn() {
+        this.hp = 100;
+        this.food = 100;
+        this.water = 100;
+        this.stamina = 100;
+        this.pos.set(0, 3, 0);
+        document.getElementById('death-overlay').classList.remove('active');
+        this.showToast('تمت إعادة إحيائك بنجاح!');
+      }
+
+      showToast(text) {
+        const t = document.getElementById('toast-msg');
+        t.textContent = text;
+        t.classList.add('show');
+        clearTimeout(this.toastTimer);
+        this.toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+      }
+
+      initPWA() {
+        const installBtn = document.getElementById('btn-pwa-install');
+        window.addEventListener('beforeinstallprompt', (e) => {
+          e.preventDefault();
+          this.deferredPrompt = e;
+          installBtn.style.display = 'flex';
+          installBtn.onclick = () => {
+            this.deferredPrompt.prompt();
+            this.deferredPrompt = null;
+            installBtn.style.display = 'none';
+          };
+        });
+
+        if ('serviceWorker' in navigator && (window.location.protocol.startsWith('http') || window.location.hostname === 'localhost')) {
+          navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+      }
+
+      update(delta) {
+        // 1. تنعيم حركة الكاميرا
+        this.yaw = THREE.MathUtils.lerp(this.yaw, this.targetYaw, 0.25);
+        this.pitch = THREE.MathUtils.lerp(this.pitch, this.targetPitch, 0.25);
+        this.camera.rotation.y = this.yaw;
+        this.camera.rotation.x = this.pitch;
+
+        // 2. حركة اللاعب
+        const speed = (this.isSprinting ? 6.2 : 3.8) * delta;
+        const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+        const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+
+        const dir = new THREE.Vector3().addScaledVector(right, this.moveInput.x).addScaledVector(forward, -this.moveInput.z);
+
+        if (dir.lengthSq() > 0.001) {
+          dir.normalize();
+          this.pos.addScaledVector(dir, speed);
+          if (this.isSprinting) this.stamina = Math.max(0, this.stamina - delta * 12);
+        } else {
+          this.stamina = Math.min(100, this.stamina + delta * 18);
+        }
+
+        // الجاذبية والتصادم مع الأرض
+        this.velY -= 16.0 * delta;
+        this.pos.y += this.velY * delta;
+
+        const groundY = this.getHeight(this.pos.x, this.pos.z) + 1.7;
+        if (this.pos.y <= groundY) {
+          this.pos.y = groundY;
+          this.velY = 0;
+          this.isGrounded = true;
+        }
+
+        this.camera.position.copy(this.pos);
+
+        // 3. أنيميشن اليدين
+        if (this.isSwinging) {
+          this.swingProgress += delta * 8;
+          const arc = Math.sin(this.swingProgress * Math.PI);
+          this.handsPivot.rotation.x = -arc * 0.9;
+          this.handsPivot.rotation.z = arc * 0.35;
+          if (this.swingProgress >= 1.0) {
+            this.isSwinging = false;
+            this.handsPivot.rotation.set(0, 0, 0);
+          }
+        }
+
+        // 4. البناء الشفاف
+        if (this.buildMode) {
+          const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).multiplyScalar(3.5);
+          const snapPos = this.pos.clone().add(fwd);
+          snapPos.x = Math.round(snapPos.x / 3.2) * 3.2;
+          snapPos.z = Math.round(snapPos.z / 3.2) * 3.2;
+          snapPos.y = this.getHeight(snapPos.x, snapPos.z) + 1.4;
+          this.ghostMesh.position.copy(snapPos);
+          this.ghostMesh.rotation.y = this.yaw;
+        }
+
+        // 5. الذكاء الاصطناعي للحيوانات
+        this.entities.forEach(ent => {
+          if (ent.hp <= 0) return;
+          const dist = this.pos.distanceTo(ent.mesh.position);
+
+          if (ent.type === 'deer') {
+            if (dist < 6.5) {
+              const flee = ent.mesh.position.clone().sub(this.pos).normalize();
+              ent.mesh.position.addScaledVector(flee, ent.speed * 1.6 * delta);
+            }
+          } else if (ent.type === 'wolf') {
+            if (dist < 11.0) {
+              const chase = this.pos.clone().sub(ent.mesh.position).normalize();
+              ent.mesh.position.addScaledVector(chase, ent.speed * delta);
+              ent.mesh.lookAt(this.pos.x, ent.mesh.position.y, this.pos.z);
+              if (dist < 1.5) {
+                this.hp = Math.max(0, this.hp - 10 * delta);
+                if (this.hp <= 0) document.getElementById('death-overlay').classList.add('active');
+              }
+            }
+          }
+          ent.mesh.position.y = this.getHeight(ent.mesh.position.x, ent.mesh.position.z) + 0.5;
+        });
+
+        // 6. استنزاف مؤشرات البقاء
+        this.food = Math.max(0, this.food - delta * 0.1);
+        this.water = Math.max(0, this.water - delta * 0.15);
+        if (this.food <= 0 || this.water <= 0) {
+          this.hp = Math.max(0, this.hp - delta * 1.2);
+          if (this.hp <= 0) document.getElementById('death-overlay').classList.add('active');
+        }
+
+        // تحديث الأشرطة
+        document.getElementById('val-hp').textContent = Math.round(this.hp);
+        document.getElementById('val-food').textContent = Math.round(this.food);
+        document.getElementById('val-water').textContent = Math.round(this.water);
+        document.getElementById('val-sta').textContent = Math.round(this.stamina);
+        document.getElementById('bar-hp').style.width = `${this.hp}%`;
+        document.getElementById('bar-food').style.width = `${this.food}%`;
+        document.getElementById('bar-water').style.width = `${this.water}%`;
+        document.getElementById('bar-sta').style.width = `${this.stamina}%`;
+
+        // 7. دورة الليل والنهار
+        this.dayTime += delta / 240; // 4 دقائق لكل يوم كامل
+        if (this.dayTime >= 1.0) this.dayTime = 0.0;
+        const angle = this.dayTime * Math.PI * 2;
+        this.dirLight.position.x = Math.cos(angle) * 50;
+        this.dirLight.position.y = Math.sin(angle) * 50;
+
+        const isDay = Math.sin(angle) > 0;
+        this.dirLight.intensity = isDay ? Math.sin(angle) * 1.3 : 0.05;
+        const skyCol = isDay ? 0x7dd3fc : 0x020617;
+        this.scene.background.set(skyCol);
+        this.scene.fog.color.set(skyCol);
+
+        const totalMins = Math.floor(this.dayTime * 1440);
+        const hrs = String(Math.floor(totalMins / 60)).padStart(2, '0');
+        const mins = String(totalMins % 60).padStart(2, '0');
+        document.getElementById('txt-time').textContent = `${hrs}:${mins}`;
+      }
+
+      startLoop() {
+        let last = performance.now();
+        const loop = (now) => {
+          requestAnimationFrame(loop);
+          const delta = Math.min((now - last) / 1000, 0.1);
+          last = now;
+
+          this.update(delta);
+          this.renderer.render(this.scene, this.camera);
+        };
+        requestAnimationFrame(loop);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      new MineRustGame();
+    });
+  </script>
 </body>
 </html>
