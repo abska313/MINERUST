@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#121722">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MINE-RUST">
+  <title>MINE-RUST — Hardcore Mobile 3D Survival</title>
+
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./css/style.css">
+
+  <!-- Localized fallback & offline Three.js WebGL -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <!-- WebGL Render Canvas -->
+  <div id="canvas-container">
+    <canvas id="game-canvas"></canvas>
+  </div>
+
+  <!-- Isolated Dual-Zone Mobile Touch Controller -->
+  <div id="touch-layer">
+    <div id="zone-joystick"></div>
+    <div id="zone-look"></div>
+  </div>
+
+  <!-- Dynamic Joystick Visuals -->
+  <div id="joystick-base">
+    <div id="joystick-knob"></div>
+  </div>
+
+  <!-- Reticle & Interaction Prompts -->
+  <div id="crosshair"></div>
+  <div id="interaction-prompt">
+    <span id="prompt-icon">⛏</span>
+    <span id="prompt-label">HARVEST</span>
+  </div>
+
+  <!-- Top Navigation & Status -->
+  <div id="top-hud">
+    <div style="display: flex; gap: 8px;">
+      <button class="hud-pill" id="btn-inv-toggle">🎒 INVENTORY</button>
+      <button class="hud-pill" id="btn-craft-toggle">🔨 CRAFT</button>
+      <button class="hud-pill" id="btn-build-toggle">🧱 BUILD</button>
+      <button class="hud-pill" id="btn-map-toggle">🗺 MAP</button>
+    </div>
+    <div id="compass-bar">COMPASS: <span id="txt-compass">N 000°</span></div>
+    <div style="display: flex; gap: 8px;">
+      <div class="hud-pill" id="btn-pwa-install" style="display: none; background: #0284c7;">📲 INSTALL</div>
+      <div class="hud-pill">⏰ <span id="txt-time">12:00</span></div>
+    </div>
+  </div>
+
+  <!-- Bottom Vitals & Touch Hotbar -->
+  <div id="bottom-hud">
+    <div id="vitals-row">
+      <div class="vital-gauge">
+        ❤️ HP <span id="val-hp">100</span>
+        <div class="vital-meter"><div class="vital-fill hp" id="bar-hp"></div></div>
+      </div>
+      <div class="vital-gauge">
+        🍖 FOOD <span id="val-food">100</span>
+        <div class="vital-meter"><div class="vital-fill food" id="bar-food"></div></div>
+      </div>
+      <div class="vital-gauge">
+        💧 WATER <span id="val-water">100</span>
+        <div class="vital-meter"><div class="vital-fill water" id="bar-water"></div></div>
+      </div>
+      <div class="vital-gauge">
+        ⚡ STA <span id="val-sta">100</span>
+        <div class="vital-meter"><div class="vital-fill sta" id="bar-sta"></div></div>
+      </div>
+    </div>
+    <div id="hotbar-container"></div>
+  </div>
+
+  <!-- Right-side Touch Action Cluster -->
+  <div id="action-cluster">
+    <div class="action-column">
+      <button class="hud-btn" id="btn-jump">⤴<small>JUMP</small></button>
+      <button class="hud-btn" id="btn-sprint">🏃<small>SPRINT</small></button>
+      <button class="hud-btn" id="btn-crouch">🧎<small>CROUCH</small></button>
+    </div>
+    <button class="hud-btn primary-attack" id="btn-attack">💥<small>ACTION</small></button>
+  </div>
+
+  <!-- Modal 1: Inventory & Equipment -->
+  <div class="overlay-modal" id="modal-inventory">
+    <div class="modal-header">
+      <h2>BACKPACK & EQUIPMENT</h2>
+      <button class="close-btn" data-close="modal-inventory">&times;</button>
+    </div>
+    <div class="grid-view" id="inv-grid-slots"></div>
+  </div>
+
+  <!-- Modal 2: Crafting Station -->
+  <div class="overlay-modal" id="modal-crafting">
+    <div class="modal-header">
+      <h2>SURVIVAL FABRICATION (TIER <span id="txt-wb-tier">1</span>)</h2>
+      <button class="close-btn" data-close="modal-crafting">&times;</button>
+    </div>
+    <div class="grid-view" id="craft-grid-list"></div>
+  </div>
+
+  <!-- Modal 3: Modular Building Selector -->
+  <div class="overlay-modal" id="modal-building">
+    <div class="modal-header">
+      <h2>MODULAR STRUCTURES PLAN</h2>
+      <button class="close-btn" data-close="modal-building">&times;</button>
+    </div>
+    <div class="grid-view" id="build-grid-list"></div>
+  </div>
+
+  <!-- Modal 4: Cartographic Map -->
+  <div class="overlay-modal" id="modal-map">
+    <div class="modal-header">
+      <h2>TERRAIN CARTOGRAPHY (SEED: <span id="txt-map-seed">0</span>)</h2>
+      <button class="close-btn" data-close="modal-map">&times;</button>
+    </div>
+    <div style="flex:1; display:flex; align-items:center; justify-content:center; background:#020617; border-radius:12px; position:relative; overflow:hidden;">
+      <canvas id="map-canvas" width="400" height="400" style="max-width:100%; max-height:100%; border:1px solid #1e293b;"></canvas>
+    </div>
+  </div>
+
+  <!-- In-game Notification Banner -->
+  <div id="toast-notice">Notice</div>
+
+  <!-- Death & Respawn Modal -->
+  <div id="death-screen">
+    <h1>YOU DIED</h1>
+    <p style="color: #cbd5e1; font-size: 13px;">Exposure and harsh elements claimed your survival journey.</p>
+    <button id="btn-respawn">RESPAWN AT COAST</button>
+  </div>
+
+  <!-- Core Game Script Module -->
+  <script src="./js/game.js"></script>
+</body>
+</html>
